@@ -75,7 +75,7 @@ def _copy_resolv_conf(root: Path) -> None:
         if resolved.is_file():
             shutil.copy2(str(resolved), str(dest))
         else:
-            # Fallback: write a basic resolv.conf
+            logger.warning("Host /etc/resolv.conf is a broken symlink, using fallback DNS resolvers")
             dest.write_text("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
     elif host_resolv.is_file():
         shutil.copy2(str(host_resolv), str(dest))
@@ -132,9 +132,18 @@ def create_rootfs(user: str) -> Path:
 
 def destroy_rootfs(user: str) -> bool:
     """Remove the rootfs for a user.  Returns True if removed, False if it didn't exist."""
+    from jabali_isolator import config
+
     root = _machine_dir(user)
     if not root.exists():
         return False
+
+    # Verify resolved path stays under MACHINES_DIR to prevent symlink attacks
+    resolved = root.resolve()
+    expected_parent = Path(config.MACHINES_DIR).resolve()
+    if not resolved.is_relative_to(expected_parent):
+        raise RuntimeError(f"Rootfs path escapes MACHINES_DIR: {root} -> {resolved}")
+
     shutil.rmtree(root)
     logger.info("Removed rootfs at %s", root)
     return True

@@ -18,11 +18,26 @@ from jabali_isolator.machine import dropin_dir, nspawn_path
 logger = logging.getLogger(__name__)
 
 
+def _validate_nspawn_inputs(user: str, php_version: str, pool_conf: str) -> None:
+    """Validate inputs before interpolating into systemd unit files."""
+    import re
+
+    from jabali_isolator.config import USERNAME_RE
+
+    if not re.match(USERNAME_RE, user):
+        raise ValueError(f"Invalid username for unit file: {user!r}")
+    if not re.match(r"^\d+\.\d+$", php_version):
+        raise ValueError(f"Invalid PHP version: {php_version!r}")
+    if pool_conf and ("\n" in pool_conf or "\r" in pool_conf or not pool_conf.startswith("/")):
+        raise ValueError(f"Invalid pool config path: {pool_conf!r}")
+
+
 def generate_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") -> str:
     """Return the content of a .nspawn unit file for the given user.
 
     The container runs PHP-FPM with the user's pool config as its main process.
     """
+    _validate_nspawn_inputs(user, php_version, pool_conf)
     ro_lines = "\n".join(f"BindReadOnly={p}" for p in HOST_RO_BINDS)
 
     # Bind-mount the user's pool config read-only
@@ -99,6 +114,12 @@ def remove_unit_files(user: str) -> None:
 
     dd = dropin_dir(user)
     if dd.exists():
+        from jabali_isolator.config import SERVICE_DROPIN_BASE
+
+        resolved = dd.resolve()
+        expected_parent = Path(SERVICE_DROPIN_BASE).resolve()
+        if not resolved.is_relative_to(expected_parent):
+            raise RuntimeError(f"Dropin path escapes SERVICE_DROPIN_BASE: {dd} -> {resolved}")
         shutil.rmtree(dd)
         logger.info("Removed %s", dd)
 
