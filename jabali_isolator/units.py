@@ -1,0 +1,103 @@
+"""systemd unit file generators for nspawn containers.
+
+Generates two files per container:
+  1. /etc/systemd/nspawn/{user}-php.nspawn     — container filesystem + network config
+  2. /etc/systemd/system/systemd-nspawn@{user}-php.service.d/limits.conf — resource limits
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import shutil
+from pathlib import Path
+
+from jabali_isolator.config import (
+    DEFAULT_CPU,
+    DEFAULT_MEMORY,
+    HOST_RO_BINDS,
+    NSPAWN_DIR,
+    SERVICE_DROPIN_BASE,
+    SOCKET_DIR,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def generate_nspawn_unit(user: str) -> str:
+    """Return the content of a .nspawn unit file for the given user."""
+    ro_lines = "\n".join(f"BindReadOnly={p}" for p in HOST_RO_BINDS)
+    socket_bind = f"Bind={SOCKET_DIR}/{user}:/run/php"
+    home_bind = f"Bind=/home/{user}"
+
+    return f"""\
+# Managed by jabali-isolator — do not edit manually
+[Exec]
+Boot=no
+ProcessTwo=yes
+
+[Files]
+{ro_lines}
+{home_bind}
+{socket_bind}
+TemporaryFileSystem=/tmp:mode=1777
+
+[Network]
+VirtualEthernet=no
+"""
+
+
+def generate_service_dropin(memory: str = DEFAULT_MEMORY, cpu: str = DEFAULT_CPU) -> str:
+    """Return the content of a systemd service drop-in for resource limits."""
+    return f"""\
+# Managed by jabali-isolator — do not edit manually
+[Service]
+MemoryMax={memory}
+CPUQuota={cpu}
+"""
+
+
+def _nspawn_path(user: str) -> Path:
+    return Path(NSPAWN_DIR) / f"{user}-php.nspawn"
+
+
+def _dropin_dir(user: str) -> Path:
+    return Path(SERVICE_DROPIN_BASE) / f"systemd-nspawn@{user}-php.service.d"
+
+
+def write_nspawn_unit(user: str) -> Path:
+    """Write the .nspawn unit file.  Returns the file path."""
+    path = _nspawn_path(user)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(generate_nspawn_unit(user))
+    os.chmod(path, 0o644)
+    logger.info("Wrote nspawn unit: %s", path)
+    return path
+
+
+def write_service_dropin(user: str, memory: str = DEFAULT_MEMORY, cpu: str = DEFAULT_CPU) -> Path:
+    """Write the service drop-in for resource limits.  Returns the drop-in path."""
+    dropin = _dropin_dir(user)
+    dropin.mkdir(parents=True, exist_ok=True)
+    conf = dropin / "limits.conf"
+    conf.write_text(generate_service_dropin(memory, cpu))
+    os.chmod(conf, 0o644)
+    logger.info("Wrote service drop-in: %s", conf)
+    return conf
+
+
+def remove_unit_files(user: str) -> None:
+    """Remove the .nspawn file and service drop-in directory for a user."""
+    nspawn = _nspawn_path(user)
+    if nspawn.exists():
+        nspawn.unlink()
+        logger.info("Removed %s", nspawn)
+
+    dropin = _dropin_dir(user)
+    if dropin.exists():
+        shutil.rmtree(dropin)
+        logger.info("Removed %s", dropin)
+
+
+def unit_files_exist(user: str) -> bool:
+    return _nspawn_path(user).exists()
