@@ -11,7 +11,7 @@ from pathlib import Path
 
 from jabali_isolator import config as _cfg
 from jabali_isolator.config import validate_cpu, validate_memory
-from jabali_isolator.machine import machine_name, rootfs_dir, service_name
+from jabali_isolator.machine import machine_name, service_name
 from jabali_isolator.rootfs import create_rootfs, destroy_rootfs, rootfs_exists
 from jabali_isolator.units import remove_unit_files, unit_files_exist, write_nspawn_unit, write_service_dropin
 
@@ -45,10 +45,6 @@ async def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
     return proc.returncode or 0, stdout.decode(errors="replace").strip(), stderr.decode(errors="replace").strip()
 
 
-def _machine_name(user: str) -> str:
-    return machine_name(user)
-
-
 def is_available() -> bool:
     """Check if systemd-nspawn is installed."""
     return shutil.which("systemd-nspawn") is not None
@@ -63,8 +59,9 @@ def _find_pool_config(user: str) -> tuple[str, str]:
         for conf in glob_mod.glob(pattern.format(user=user)):
             # Extract PHP version from path (e.g., /etc/php/8.4/fpm/pool.d/user.conf)
             match = re.search(r"/php/(\d+\.\d+)/", conf)
-            php_version = match.group(1) if match else "8.4"
-            return conf, php_version
+            if not match:
+                raise IsolatorError(f"Cannot determine PHP version from pool config path: {conf}")
+            return conf, match.group(1)
     raise IsolatorError(f"No PHP-FPM pool config found for {user!r}")
 
 
@@ -140,7 +137,6 @@ async def destroy(user: str) -> bool:
         await stop(user)
 
     # Disable auto-start
-    machine = _machine_name(user)
     rc, _, err = await _run(["systemctl", "disable", service_name(user)])
     if rc != 0:
         logger.warning("systemctl disable failed: %s", err)
@@ -164,7 +160,7 @@ async def destroy(user: str) -> bool:
 async def start(user: str) -> bool:
     """Start a container.  Returns True on success."""
     _validate_user(user)
-    machine = _machine_name(user)
+    machine = machine_name(user)
 
     if not rootfs_exists(user):
         raise IsolatorError(f"Container for {user!r} does not exist — run create first")
@@ -180,7 +176,7 @@ async def start(user: str) -> bool:
 async def stop(user: str) -> bool:
     """Stop a running container.  Returns True on success."""
     _validate_user(user)
-    machine = _machine_name(user)
+    machine = machine_name(user)
 
     rc, out, err = await _run(["machinectl", "stop", machine])
     if rc != 0:
@@ -206,7 +202,7 @@ async def status(user: str) -> dict:
     State is "running", "stopped", or "missing".
     """
     _validate_user(user)
-    machine = _machine_name(user)
+    machine = machine_name(user)
     exists = rootfs_exists(user)
 
     if not exists:
