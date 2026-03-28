@@ -190,6 +190,22 @@ class TestStop:
             assert await stop("testuser") is True
 
 
+class TestRestart:
+    @pytest.mark.asyncio
+    async def test_restart_succeeds(self, isolator_dirs):
+        (isolator_dirs["machines"] / "testuser-php").mkdir(parents=True)
+
+        with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")):
+            assert await restart("testuser") is True
+
+    @pytest.mark.asyncio
+    async def test_restart_fails_when_no_rootfs(self, isolator_dirs):
+        with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")):
+            # stop() tolerates missing, but start() raises
+            with pytest.raises(IsolatorError, match="does not exist"):
+                await restart("nonexistent")
+
+
 class TestStatus:
     @pytest.mark.asyncio
     async def test_running(self, isolator_dirs):

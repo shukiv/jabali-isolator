@@ -76,6 +76,7 @@ def _copy_resolv_conf(root: Path) -> None:
     elif host_resolv.is_file():
         shutil.copy2(str(host_resolv), str(dest))
     else:
+        logger.warning("Host /etc/resolv.conf not found, using fallback DNS resolvers (1.1.1.1, 8.8.8.8)")
         dest.write_text("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
 
 

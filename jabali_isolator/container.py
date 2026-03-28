@@ -11,7 +11,7 @@ from pathlib import Path
 
 from jabali_isolator import config as _cfg
 from jabali_isolator.config import validate_cpu, validate_memory
-from jabali_isolator.machine import machine_name, service_name
+from jabali_isolator.machine import SUFFIX, machine_name, service_name
 from jabali_isolator.rootfs import create_rootfs, destroy_rootfs, rootfs_exists
 from jabali_isolator.units import remove_unit_files, unit_files_exist, write_nspawn_unit, write_service_dropin
 
@@ -42,7 +42,7 @@ async def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
         await proc.wait()
         raise IsolatorError(f"Command timed out: {' '.join(cmd)}")
 
-    return proc.returncode or 0, stdout.decode(errors="replace").strip(), stderr.decode(errors="replace").strip()
+    return proc.returncode, stdout.decode(errors="replace").strip(), stderr.decode(errors="replace").strip()
 
 
 def is_available() -> bool:
@@ -232,10 +232,7 @@ async def list_all() -> list[dict]:
 
     Scans /var/lib/machines/*{SUFFIX}/ directories.
     """
-    from jabali_isolator.machine import SUFFIX
-    from jabali_isolator import config
-
-    machines = Path(config.MACHINES_DIR)
+    machines = Path(_cfg.MACHINES_DIR)
     if not machines.is_dir():
         return []
 

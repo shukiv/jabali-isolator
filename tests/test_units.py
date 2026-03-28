@@ -91,6 +91,7 @@ class TestRemoveUnitFiles:
 
         remove_unit_files("testuser")
         assert not (isolator_dirs["nspawn"] / "testuser-php.nspawn").exists()
+        assert not (isolator_dirs["system"] / "systemd-nspawn@testuser-php.service.d").exists()
 
     def test_tolerates_missing(self, isolator_dirs):
         remove_unit_files("nonexistent")

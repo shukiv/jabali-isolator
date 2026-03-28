@@ -12,6 +12,7 @@ import click
 
 from jabali_isolator import container
 from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY
+from jabali_isolator.machine import machine_name
 
 logging.basicConfig(
     format="%(levelname)s: %(message)s",
@@ -86,7 +87,7 @@ def start(user: str) -> None:
 
     try:
         _run(container.start(user))
-        click.echo(f"Started {user}-php")
+        click.echo(f"Started {machine_name(user)}")
     except container.IsolatorError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -100,7 +101,7 @@ def stop(user: str) -> None:
 
     try:
         _run(container.stop(user))
-        click.echo(f"Stopped {user}-php")
+        click.echo(f"Stopped {machine_name(user)}")
     except container.IsolatorError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -114,7 +115,7 @@ def restart(user: str) -> None:
 
     try:
         _run(container.restart(user))
-        click.echo(f"Restarted {user}-php")
+        click.echo(f"Restarted {machine_name(user)}")
     except container.IsolatorError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
