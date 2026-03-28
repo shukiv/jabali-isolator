@@ -7,10 +7,10 @@ rootfs only contains /etc files and empty mount-point directories.
 
 from __future__ import annotations
 
+import grp
 import logging
 import os
 import pwd
-import grp
 import shutil
 from pathlib import Path
 
@@ -38,7 +38,9 @@ def _write_minimal_passwd(root: Path, pw: pwd.struct_passwd) -> None:
         "root:x:0:0:root:/root:/usr/sbin/nologin",
         f"{pw.pw_name}:x:{pw.pw_uid}:{pw.pw_gid}:{pw.pw_gecos}:{pw.pw_dir}:/usr/sbin/nologin",
     ]
-    (etc / "passwd").write_text("\n".join(lines) + "\n")
+    passwd_file = etc / "passwd"
+    passwd_file.write_text("\n".join(lines) + "\n")
+    os.chmod(passwd_file, 0o644)
 
 
 def _write_minimal_group(root: Path, pw: pwd.struct_passwd) -> None:
@@ -56,7 +58,9 @@ def _write_minimal_group(root: Path, pw: pwd.struct_passwd) -> None:
         "root:x:0:",
         f"{group_name}:x:{pw.pw_gid}:",
     ]
-    (etc / "group").write_text("\n".join(lines) + "\n")
+    group_file = etc / "group"
+    group_file.write_text("\n".join(lines) + "\n")
+    os.chmod(group_file, 0o644)
 
 
 def _copy_resolv_conf(root: Path) -> None:
@@ -101,7 +105,7 @@ def _create_directories(root: Path, user: str) -> None:
         d.mkdir(parents=True, exist_ok=True)
 
     # /tmp needs sticky bit
-    os.chmod(root / "tmp", 0o1777)
+    os.chmod(root / "tmp", 0o1777)  # noqa: S103
 
 
 def create_rootfs(user: str) -> Path:

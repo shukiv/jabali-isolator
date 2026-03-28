@@ -8,6 +8,7 @@ MACHINES_DIR = "/var/lib/machines"
 NSPAWN_DIR = "/etc/systemd/nspawn"
 SOCKET_DIR = "/run/php"
 SERVICE_DROPIN_BASE = "/etc/systemd/system"
+LOCK_DIR = "/run/jabali-isolator"
 
 DEFAULT_MEMORY = "512M"
 DEFAULT_CPU = "100%"

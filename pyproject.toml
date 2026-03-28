@@ -3,7 +3,7 @@ name = "jabali-isolator"
 version = "0.1.0"
 description = "PHP-FPM container isolation via systemd-nspawn"
 requires-python = ">=3.12"
-dependencies = ["click>=8.0"]
+dependencies = ["click>=8.0,<9"]
 
 [project.scripts]
 jabali-isolate = "jabali_isolator.__main__:cli"
@@ -28,6 +28,6 @@ select = ["E", "F", "W", "I", "S"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0",
+    "pytest>=9.0.2,<10",
+    "pytest-asyncio>=1.3.0,<2",
 ]

@@ -52,9 +52,11 @@ class TestIsAvailable:
 class TestCreate:
     @pytest.mark.asyncio
     async def test_creates_container(self, isolator_dirs, fake_pool, fake_user):
-        with patch("jabali_isolator.container.is_available", return_value=True), \
-             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user), \
-             patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")) as mock_run:
+        with (
+            patch("jabali_isolator.container.is_available", return_value=True),
+            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
+            patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")) as mock_run,
+        ):
             result = await create("testuser", memory="256M", cpu="50%")
 
         assert result["user"] == "testuser"
@@ -77,14 +79,17 @@ class TestCreate:
 
     @pytest.mark.asyncio
     async def test_fails_for_nonexistent_user(self, isolator_dirs, fake_pool):
-        with patch("jabali_isolator.container.is_available", return_value=True), \
-             patch("jabali_isolator.rootfs._lookup_user", side_effect=KeyError("nope")):
+        with (
+            patch("jabali_isolator.container.is_available", return_value=True),
+            patch("jabali_isolator.rootfs._lookup_user", side_effect=KeyError("nope")),
+        ):
             with pytest.raises(IsolatorError, match="does not exist"):
                 await create("testuser")
 
     @pytest.mark.asyncio
     async def test_fails_without_pool_config(self, isolator_dirs, monkeypatch):
         import jabali_isolator.config as cfg
+
         monkeypatch.setattr(cfg, "FPM_POOL_PATHS", ["/nonexistent/*/pool.d/{user}.conf"])
 
         with patch("jabali_isolator.container.is_available", return_value=True):
@@ -105,12 +110,18 @@ class TestCreate:
 
     @pytest.mark.asyncio
     async def test_succeeds_when_enable_fails(self, isolator_dirs, fake_pool, fake_user):
-        with patch("jabali_isolator.container.is_available", return_value=True), \
-             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user), \
-             patch("jabali_isolator.container._run", new_callable=AsyncMock, side_effect=[
-                 (0, "", ""),
-                 (1, "", "Failed to enable unit"),
-             ]):
+        with (
+            patch("jabali_isolator.container.is_available", return_value=True),
+            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
+            patch(
+                "jabali_isolator.container._run",
+                new_callable=AsyncMock,
+                side_effect=[
+                    (0, "", ""),
+                    (1, "", "Failed to enable unit"),
+                ],
+            ),
+        ):
             result = await create("testuser")
 
         assert result["user"] == "testuser"
@@ -124,9 +135,11 @@ class TestCreate:
 class TestDestroy:
     @pytest.mark.asyncio
     async def test_destroys_existing(self, isolator_dirs, fake_pool, fake_user):
-        with patch("jabali_isolator.container.is_available", return_value=True), \
-             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user), \
-             patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")):
+        with (
+            patch("jabali_isolator.container.is_available", return_value=True),
+            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
+            patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")),
+        ):
             await create("testuser")
 
         with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")) as mock_run:
@@ -140,17 +153,22 @@ class TestDestroy:
 
     @pytest.mark.asyncio
     async def test_succeeds_when_disable_fails(self, isolator_dirs, fake_pool, fake_user):
-        with patch("jabali_isolator.container.is_available", return_value=True), \
-             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user), \
-             patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")):
+        with (
+            patch("jabali_isolator.container.is_available", return_value=True),
+            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
+            patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")),
+        ):
             await create("testuser")
 
-        with patch("jabali_isolator.container._run", new_callable=AsyncMock, side_effect=[
-            (1, "", ""),
-            (1, "disabled", ""),
-            (1, "", "Failed to disable unit"),
-            (0, "", ""),
-        ]):
+        with patch(
+            "jabali_isolator.container._run",
+            new_callable=AsyncMock,
+            side_effect=[
+                (0, "", ""),                         # stop (tolerates not-running)
+                (1, "", "Failed to disable unit"),   # disable fails
+                (0, "", ""),                         # daemon-reload
+            ],
+        ):
             removed = await destroy("testuser")
 
         assert removed is True
@@ -180,12 +198,12 @@ class TestStart:
 
 class TestStop:
     @pytest.mark.asyncio
-    async def test_stops_running(self):
+    async def test_stops_running(self, isolator_dirs):
         with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")):
             assert await stop("testuser") is True
 
     @pytest.mark.asyncio
-    async def test_tolerates_not_running(self):
+    async def test_tolerates_not_running(self, isolator_dirs):
         with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(1, "", "not running")):
             assert await stop("testuser") is True
 
@@ -211,10 +229,14 @@ class TestStatus:
     async def test_running(self, isolator_dirs):
         (isolator_dirs["machines"] / "testuser-php").mkdir(parents=True)
 
-        with patch("jabali_isolator.container._run", new_callable=AsyncMock, side_effect=[
-            (0, "State=running", ""),
-            (0, "enabled", ""),
-        ]):
+        with patch(
+            "jabali_isolator.container._run",
+            new_callable=AsyncMock,
+            side_effect=[
+                (0, "State=running", ""),
+                (0, "enabled", ""),
+            ],
+        ):
             info = await status("testuser")
 
         assert info["state"] == "running"
@@ -232,10 +254,14 @@ class TestStatus:
     async def test_stopped_and_disabled(self, isolator_dirs):
         (isolator_dirs["machines"] / "testuser-php").mkdir(parents=True)
 
-        with patch("jabali_isolator.container._run", new_callable=AsyncMock, side_effect=[
-            (1, "", ""),
-            (1, "disabled", ""),
-        ]):
+        with patch(
+            "jabali_isolator.container._run",
+            new_callable=AsyncMock,
+            side_effect=[
+                (1, "", ""),
+                (1, "disabled", ""),
+            ],
+        ):
             info = await status("testuser")
 
         assert info["state"] == "stopped"

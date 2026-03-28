@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from jabali_isolator.units import (
     generate_nspawn_unit,
     generate_service_dropin,

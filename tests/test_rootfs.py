@@ -38,8 +38,10 @@ class TestCreateRootfs:
         assert ":1001:1001:" in lines[1]
 
     def test_group_contains_root_and_user_group(self, isolator_dirs, fake_user):
-        with patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user), \
-             patch("jabali_isolator.rootfs._lookup_group", side_effect=KeyError):
+        with (
+            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
+            patch("jabali_isolator.rootfs._lookup_group", side_effect=KeyError),
+        ):
             root = create_rootfs("testuser")
 
         group = (root / "etc" / "group").read_text()
