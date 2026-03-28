@@ -14,13 +14,9 @@ import grp
 import shutil
 from pathlib import Path
 
-from jabali_isolator.config import MACHINES_DIR
+from jabali_isolator.machine import rootfs_dir as _machine_dir
 
 logger = logging.getLogger(__name__)
-
-
-def _machine_dir(user: str) -> Path:
-    return Path(MACHINES_DIR) / f"{user}-php"
 
 
 def _lookup_user(user: str) -> pwd.struct_passwd:

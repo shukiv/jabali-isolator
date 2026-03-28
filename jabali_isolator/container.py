@@ -9,7 +9,9 @@ import re
 import shutil
 from pathlib import Path
 
-from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY, FPM_POOL_PATHS, MACHINES_DIR, USERNAME_RE
+from jabali_isolator import config as _cfg
+from jabali_isolator.config import validate_cpu, validate_memory
+from jabali_isolator.machine import machine_name, rootfs_dir, service_name
 from jabali_isolator.rootfs import create_rootfs, destroy_rootfs, rootfs_exists
 from jabali_isolator.units import remove_unit_files, unit_files_exist, write_nspawn_unit, write_service_dropin
 
@@ -22,7 +24,7 @@ class IsolatorError(Exception):
 
 def _validate_user(user: str) -> None:
     """Validate username to prevent command injection."""
-    if not re.match(USERNAME_RE, user):
+    if not re.match(_cfg.USERNAME_RE, user):
         raise IsolatorError(f"Invalid username: {user!r}")
 
 
@@ -44,7 +46,7 @@ async def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str, str]:
 
 
 def _machine_name(user: str) -> str:
-    return f"{user}-php"
+    return machine_name(user)
 
 
 def is_available() -> bool:
@@ -57,7 +59,7 @@ def _find_pool_config(user: str) -> tuple[str, str]:
 
     Returns (pool_conf_path, php_version).  Raises IsolatorError if not found.
     """
-    for pattern in FPM_POOL_PATHS:
+    for pattern in _cfg.FPM_POOL_PATHS:
         for conf in glob_mod.glob(pattern.format(user=user)):
             # Extract PHP version from path (e.g., /etc/php/8.4/fpm/pool.d/user.conf)
             match = re.search(r"/php/(\d+\.\d+)/", conf)
@@ -68,8 +70,8 @@ def _find_pool_config(user: str) -> tuple[str, str]:
 
 async def create(
     user: str,
-    memory: str = DEFAULT_MEMORY,
-    cpu: str = DEFAULT_CPU,
+    memory: str = _cfg.DEFAULT_MEMORY,
+    cpu: str = _cfg.DEFAULT_CPU,
 ) -> dict:
     """Create a container for the given user.
 
@@ -79,6 +81,12 @@ async def create(
     Returns a dict with creation details.
     """
     _validate_user(user)
+
+    try:
+        validate_memory(memory)
+        validate_cpu(cpu)
+    except ValueError as e:
+        raise IsolatorError(str(e))
 
     if not is_available():
         raise IsolatorError("systemd-nspawn is not installed")
@@ -102,7 +110,7 @@ async def create(
         logger.warning("systemctl daemon-reload failed: %s", err)
 
     # Enable auto-start on boot
-    rc, _, err = await _run(["systemctl", "enable", f"systemd-nspawn@{_machine_name(user)}.service"])
+    rc, _, err = await _run(["systemctl", "enable", service_name(user)])
     if rc != 0:
         logger.warning("systemctl enable failed: %s", err)
 
@@ -133,7 +141,7 @@ async def destroy(user: str) -> bool:
 
     # Disable auto-start
     machine = _machine_name(user)
-    rc, _, err = await _run(["systemctl", "disable", f"systemd-nspawn@{machine}.service"])
+    rc, _, err = await _run(["systemctl", "disable", service_name(user)])
     if rc != 0:
         logger.warning("systemctl disable failed: %s", err)
 
@@ -206,7 +214,7 @@ async def status(user: str) -> dict:
 
     (rc, out, err), (rc_en, out_en, _) = await asyncio.gather(
         _run(["machinectl", "show", machine, "--property=State"], timeout=10),
-        _run(["systemctl", "is-enabled", f"systemd-nspawn@{machine}.service"], timeout=10),
+        _run(["systemctl", "is-enabled", service_name(user)], timeout=10),
     )
     enabled = rc_en == 0 and out_en.strip().startswith("enabled")
 
@@ -226,16 +234,19 @@ async def status(user: str) -> dict:
 async def list_all() -> list[dict]:
     """List all jabali-isolator managed containers.
 
-    Scans /var/lib/machines/*-php/ directories.
+    Scans /var/lib/machines/*{SUFFIX}/ directories.
     """
-    machines = Path(MACHINES_DIR)
+    from jabali_isolator.machine import SUFFIX
+    from jabali_isolator import config
+
+    machines = Path(config.MACHINES_DIR)
     if not machines.is_dir():
         return []
 
     containers = []
     for entry in sorted(machines.iterdir()):
-        if entry.is_dir() and entry.name.endswith("-php"):
-            user = entry.name.removesuffix("-php")
+        if entry.is_dir() and entry.name.endswith(SUFFIX):
+            user = entry.name.removesuffix(SUFFIX)
             info = await status(user)
             containers.append(info)
 

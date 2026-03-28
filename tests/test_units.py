@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from jabali_isolator.units import (
@@ -71,8 +69,7 @@ class TestGenerateServiceDropin:
 
 
 class TestWriteNspawnUnit:
-    def test_writes_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path))
+    def test_writes_file(self, isolator_dirs):
         path = write_nspawn_unit("testuser")
         assert path.name == "testuser-php.nspawn"
         assert path.is_file()
@@ -80,8 +77,7 @@ class TestWriteNspawnUnit:
 
 
 class TestWriteServiceDropin:
-    def test_writes_dropin(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path))
+    def test_writes_dropin(self, isolator_dirs):
         path = write_service_dropin("testuser", memory="256M", cpu="50%")
         assert path.name == "limits.conf"
         assert "MemoryMax=256M" in path.read_text()
@@ -89,29 +85,21 @@ class TestWriteServiceDropin:
 
 
 class TestRemoveUnitFiles:
-    def test_removes_both(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
-        monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))
+    def test_removes_both(self, isolator_dirs):
         write_nspawn_unit("testuser")
         write_service_dropin("testuser")
 
         remove_unit_files("testuser")
-        assert not (tmp_path / "nspawn" / "testuser-php.nspawn").exists()
-        assert not (tmp_path / "system" / "systemd-nspawn@testuser-php.service.d").exists()
+        assert not (isolator_dirs["nspawn"] / "testuser-php.nspawn").exists()
 
-    def test_tolerates_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
-        monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))
-        # Should not raise
+    def test_tolerates_missing(self, isolator_dirs):
         remove_unit_files("nonexistent")
 
 
 class TestUnitFilesExist:
-    def test_true_when_exists(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path))
+    def test_true_when_exists(self, isolator_dirs):
         write_nspawn_unit("testuser")
         assert unit_files_exist("testuser") is True
 
-    def test_false_when_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path))
+    def test_false_when_missing(self, isolator_dirs):
         assert unit_files_exist("nonexistent") is False

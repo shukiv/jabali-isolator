@@ -12,14 +12,8 @@ import os
 import shutil
 from pathlib import Path
 
-from jabali_isolator.config import (
-    DEFAULT_CPU,
-    DEFAULT_MEMORY,
-    HOST_RO_BINDS,
-    NSPAWN_DIR,
-    SERVICE_DROPIN_BASE,
-    SOCKET_DIR,
-)
+from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY, HOST_RO_BINDS, SOCKET_DIR
+from jabali_isolator.machine import dropin_dir, nspawn_path
 
 logger = logging.getLogger(__name__)
 
@@ -75,17 +69,9 @@ CPUQuota={cpu}
 """
 
 
-def _nspawn_path(user: str) -> Path:
-    return Path(NSPAWN_DIR) / f"{user}-php.nspawn"
-
-
-def _dropin_dir(user: str) -> Path:
-    return Path(SERVICE_DROPIN_BASE) / f"systemd-nspawn@{user}-php.service.d"
-
-
 def write_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") -> Path:
     """Write the .nspawn unit file.  Returns the file path."""
-    path = _nspawn_path(user)
+    path = nspawn_path(user)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(generate_nspawn_unit(user, php_version=php_version, pool_conf=pool_conf))
     os.chmod(path, 0o644)
@@ -95,7 +81,7 @@ def write_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") 
 
 def write_service_dropin(user: str, memory: str = DEFAULT_MEMORY, cpu: str = DEFAULT_CPU) -> Path:
     """Write the service drop-in for resource limits.  Returns the drop-in path."""
-    dropin = _dropin_dir(user)
+    dropin = dropin_dir(user)
     dropin.mkdir(parents=True, exist_ok=True)
     conf = dropin / "limits.conf"
     conf.write_text(generate_service_dropin(memory, cpu))
@@ -106,16 +92,16 @@ def write_service_dropin(user: str, memory: str = DEFAULT_MEMORY, cpu: str = DEF
 
 def remove_unit_files(user: str) -> None:
     """Remove the .nspawn file and service drop-in directory for a user."""
-    nspawn = _nspawn_path(user)
-    if nspawn.exists():
-        nspawn.unlink()
-        logger.info("Removed %s", nspawn)
+    np = nspawn_path(user)
+    if np.exists():
+        np.unlink()
+        logger.info("Removed %s", np)
 
-    dropin = _dropin_dir(user)
-    if dropin.exists():
-        shutil.rmtree(dropin)
-        logger.info("Removed %s", dropin)
+    dd = dropin_dir(user)
+    if dd.exists():
+        shutil.rmtree(dd)
+        logger.info("Removed %s", dd)
 
 
 def unit_files_exist(user: str) -> bool:
-    return _nspawn_path(user).exists()
+    return nspawn_path(user).exists()
