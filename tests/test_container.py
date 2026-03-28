@@ -53,13 +53,18 @@ class TestCreate:
     @pytest.mark.asyncio
     async def test_creates_container(self, tmp_path, monkeypatch):
         monkeypatch.setattr("jabali_isolator.container.MACHINES_DIR", str(tmp_path / "machines"))
-        monkeypatch.setattr("jabali_isolator.container.SOCKET_DIR", str(tmp_path / "sockets"))
         monkeypatch.setattr("jabali_isolator.rootfs.MACHINES_DIR", str(tmp_path / "machines"))
         monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
         monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))
 
         import pwd
         fake_pw = pwd.struct_passwd(("testuser", "x", 1001, 1001, "", "/home/testuser", "/bin/bash"))
+
+        # Create a fake pool config for _find_pool_config to discover
+        pool_dir = tmp_path / "php" / "8.4" / "fpm" / "pool.d"
+        pool_dir.mkdir(parents=True)
+        (pool_dir / "testuser.conf").write_text("[testuser]\nuser = testuser\n")
+        monkeypatch.setattr("jabali_isolator.container.FPM_POOL_PATHS", [str(tmp_path / "php/*/fpm/pool.d/{user}.conf")])
 
         with patch("jabali_isolator.container.is_available", return_value=True), \
              patch("jabali_isolator.rootfs._lookup_user", return_value=fake_pw), \
@@ -69,11 +74,15 @@ class TestCreate:
         assert result["user"] == "testuser"
         assert result["memory"] == "256M"
         assert result["cpu"] == "50%"
+        assert result["php_version"] == "8.4"
         enable_calls = [c for c in mock_run.call_args_list if "enable" in c[0][0]]
         assert len(enable_calls) == 1
         assert (tmp_path / "machines" / "testuser-php" / "etc" / "passwd").is_file()
         assert (tmp_path / "nspawn" / "testuser-php.nspawn").is_file()
-        assert (tmp_path / "sockets" / "testuser").is_dir()
+        # Verify the nspawn unit contains PHP-FPM command
+        nspawn_content = (tmp_path / "nspawn" / "testuser-php.nspawn").read_text()
+        assert "php-fpm8.4" in nspawn_content
+        assert "--nodaemonize" in nspawn_content
 
     @pytest.mark.asyncio
     async def test_fails_without_nspawn(self):
@@ -84,6 +93,11 @@ class TestCreate:
     @pytest.mark.asyncio
     async def test_fails_for_nonexistent_user(self, tmp_path, monkeypatch):
         monkeypatch.setattr("jabali_isolator.rootfs.MACHINES_DIR", str(tmp_path))
+        # Create fake pool so _find_pool_config passes
+        pool_dir = tmp_path / "php" / "8.4" / "fpm" / "pool.d"
+        pool_dir.mkdir(parents=True)
+        (pool_dir / "nope.conf").write_text("[nope]\nuser = nope\n")
+        monkeypatch.setattr("jabali_isolator.container.FPM_POOL_PATHS", [str(tmp_path / "php/*/fpm/pool.d/{user}.conf")])
 
         with patch("jabali_isolator.container.is_available", return_value=True), \
              patch("jabali_isolator.rootfs._lookup_user", side_effect=KeyError("nope")):
@@ -91,12 +105,24 @@ class TestCreate:
                 await create("nope")
 
     @pytest.mark.asyncio
+    async def test_fails_without_pool_config(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("jabali_isolator.container.FPM_POOL_PATHS", [str(tmp_path / "nonexistent/*/pool.d/{user}.conf")])
+
+        with patch("jabali_isolator.container.is_available", return_value=True):
+            with pytest.raises(IsolatorError, match="No PHP-FPM pool config found"):
+                await create("testuser")
+
+    @pytest.mark.asyncio
     async def test_succeeds_when_enable_fails(self, tmp_path, monkeypatch):
         monkeypatch.setattr("jabali_isolator.container.MACHINES_DIR", str(tmp_path / "machines"))
-        monkeypatch.setattr("jabali_isolator.container.SOCKET_DIR", str(tmp_path / "sockets"))
         monkeypatch.setattr("jabali_isolator.rootfs.MACHINES_DIR", str(tmp_path / "machines"))
         monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
         monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))
+
+        pool_dir = tmp_path / "php" / "8.4" / "fpm" / "pool.d"
+        pool_dir.mkdir(parents=True)
+        (pool_dir / "testuser.conf").write_text("[testuser]\nuser = testuser\n")
+        monkeypatch.setattr("jabali_isolator.container.FPM_POOL_PATHS", [str(tmp_path / "php/*/fpm/pool.d/{user}.conf")])
 
         import pwd
         fake_pw = pwd.struct_passwd(("testuser", "x", 1001, 1001, "", "/home/testuser", "/bin/bash"))
@@ -118,15 +144,20 @@ class TestCreate:
 
 
 class TestDestroy:
+    def _setup_pool(self, tmp_path, monkeypatch):
+        pool_dir = tmp_path / "php" / "8.4" / "fpm" / "pool.d"
+        pool_dir.mkdir(parents=True, exist_ok=True)
+        (pool_dir / "testuser.conf").write_text("[testuser]\nuser = testuser\n")
+        monkeypatch.setattr("jabali_isolator.container.FPM_POOL_PATHS", [str(tmp_path / "php/*/fpm/pool.d/{user}.conf")])
+
     @pytest.mark.asyncio
     async def test_destroys_existing(self, tmp_path, monkeypatch):
         monkeypatch.setattr("jabali_isolator.container.MACHINES_DIR", str(tmp_path / "machines"))
-        monkeypatch.setattr("jabali_isolator.container.SOCKET_DIR", str(tmp_path / "sockets"))
         monkeypatch.setattr("jabali_isolator.rootfs.MACHINES_DIR", str(tmp_path / "machines"))
         monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
         monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))
+        self._setup_pool(tmp_path, monkeypatch)
 
-        # Create first
         import pwd
         fake_pw = pwd.struct_passwd(("testuser", "x", 1001, 1001, "", "/home/testuser", "/bin/bash"))
 
@@ -144,17 +175,15 @@ class TestDestroy:
         assert len(disable_calls) == 1
         assert not (tmp_path / "machines" / "testuser-php").exists()
         assert not (tmp_path / "nspawn" / "testuser-php.nspawn").exists()
-        assert not (tmp_path / "sockets" / "testuser").exists()
 
     @pytest.mark.asyncio
     async def test_succeeds_when_disable_fails(self, tmp_path, monkeypatch):
         monkeypatch.setattr("jabali_isolator.container.MACHINES_DIR", str(tmp_path / "machines"))
-        monkeypatch.setattr("jabali_isolator.container.SOCKET_DIR", str(tmp_path / "sockets"))
         monkeypatch.setattr("jabali_isolator.rootfs.MACHINES_DIR", str(tmp_path / "machines"))
         monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
         monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))
+        self._setup_pool(tmp_path, monkeypatch)
 
-        # Create first
         import pwd
         fake_pw = pwd.struct_passwd(("testuser", "x", 1001, 1001, "", "/home/testuser", "/bin/bash"))
 
@@ -178,7 +207,6 @@ class TestDestroy:
     @pytest.mark.asyncio
     async def test_returns_false_when_nothing_to_destroy(self, tmp_path, monkeypatch):
         monkeypatch.setattr("jabali_isolator.container.MACHINES_DIR", str(tmp_path))
-        monkeypatch.setattr("jabali_isolator.container.SOCKET_DIR", str(tmp_path / "sockets"))
         monkeypatch.setattr("jabali_isolator.rootfs.MACHINES_DIR", str(tmp_path))
         monkeypatch.setattr("jabali_isolator.units.NSPAWN_DIR", str(tmp_path / "nspawn"))
         monkeypatch.setattr("jabali_isolator.units.SERVICE_DROPIN_BASE", str(tmp_path / "system"))

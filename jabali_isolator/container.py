@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import glob as glob_mod
 import logging
 import re
 import shutil
 from pathlib import Path
 
-from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY, MACHINES_DIR, SOCKET_DIR, USERNAME_RE
+from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY, FPM_POOL_PATHS, MACHINES_DIR, USERNAME_RE
 from jabali_isolator.rootfs import create_rootfs, destroy_rootfs, rootfs_exists
 from jabali_isolator.units import remove_unit_files, unit_files_exist, write_nspawn_unit, write_service_dropin
 
@@ -51,6 +52,20 @@ def is_available() -> bool:
     return shutil.which("systemd-nspawn") is not None
 
 
+def _find_pool_config(user: str) -> tuple[str, str]:
+    """Find the user's PHP-FPM pool config and PHP version.
+
+    Returns (pool_conf_path, php_version).  Raises IsolatorError if not found.
+    """
+    for pattern in FPM_POOL_PATHS:
+        for conf in glob_mod.glob(pattern.format(user=user)):
+            # Extract PHP version from path (e.g., /etc/php/8.4/fpm/pool.d/user.conf)
+            match = re.search(r"/php/(\d+\.\d+)/", conf)
+            php_version = match.group(1) if match else "8.4"
+            return conf, php_version
+    raise IsolatorError(f"No PHP-FPM pool config found for {user!r}")
+
+
 async def create(
     user: str,
     memory: str = DEFAULT_MEMORY,
@@ -58,8 +73,8 @@ async def create(
 ) -> dict:
     """Create a container for the given user.
 
-    Builds the rootfs, writes systemd unit files, and creates the host socket
-    directory.  Does NOT start the container — call start() after.
+    Finds the user's PHP-FPM pool config, builds the rootfs, writes systemd
+    unit files.  Does NOT start the container — call start() after.
 
     Returns a dict with creation details.
     """
@@ -68,19 +83,18 @@ async def create(
     if not is_available():
         raise IsolatorError("systemd-nspawn is not installed")
 
+    # Find pool config and PHP version
+    pool_conf, php_version = _find_pool_config(user)
+
     # Build rootfs (raises KeyError if user doesn't exist)
     try:
         rootfs_path = create_rootfs(user)
     except KeyError:
         raise IsolatorError(f"User {user!r} does not exist on this system")
 
-    # Write unit files
-    write_nspawn_unit(user)
+    # Write unit files — container will run PHP-FPM with this user's pool
+    write_nspawn_unit(user, php_version=php_version, pool_conf=pool_conf)
     write_service_dropin(user, memory=memory, cpu=cpu)
-
-    # Create host-side socket directory
-    sock_dir = Path(SOCKET_DIR) / user
-    sock_dir.mkdir(parents=True, exist_ok=True)
 
     # Reload systemd to pick up new units
     rc, _, err = await _run(["systemctl", "daemon-reload"])
@@ -92,10 +106,12 @@ async def create(
     if rc != 0:
         logger.warning("systemctl enable failed: %s", err)
 
-    logger.info("Created container for %s", user)
+    logger.info("Created container for %s (PHP %s, pool: %s)", user, php_version, pool_conf)
     return {
         "user": user,
         "rootfs": str(rootfs_path),
+        "php_version": php_version,
+        "pool_conf": pool_conf,
         "memory": memory,
         "cpu": cpu,
     }
@@ -128,12 +144,6 @@ async def destroy(user: str) -> bool:
 
     # Remove rootfs
     if destroy_rootfs(user):
-        existed = True
-
-    # Remove host socket directory
-    sock_dir = Path(SOCKET_DIR) / user
-    if sock_dir.exists():
-        shutil.rmtree(sock_dir)
         existed = True
 
     if existed:

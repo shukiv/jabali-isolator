@@ -96,6 +96,9 @@ def _create_directories(root: Path, user: str) -> None:
         root / "sbin",
         root / "etc" / "php",
         root / "etc" / "ssl" / "certs",
+        root / "var" / "log",
+        root / "var" / "run",
+        root / "dev",
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)

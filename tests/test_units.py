@@ -26,7 +26,16 @@ class TestGenerateNspawnUnit:
 
     def test_contains_socket_bind(self):
         content = generate_nspawn_unit("testuser")
-        assert "Bind=/run/jabali-fpm/testuser:/run/php" in content
+        assert "Bind=/run/php" in content
+
+    def test_contains_fpm_command(self):
+        content = generate_nspawn_unit("testuser", php_version="8.4")
+        assert "Parameters=/usr/sbin/php-fpm8.4 --nodaemonize" in content
+        assert "testuser.conf" in content
+
+    def test_custom_pool_conf(self):
+        content = generate_nspawn_unit("testuser", pool_conf="/etc/php/8.3/fpm/pool.d/testuser.conf")
+        assert "BindReadOnly=/etc/php/8.3/fpm/pool.d/testuser.conf" in content
 
     def test_tmpfs(self):
         content = generate_nspawn_unit("testuser")

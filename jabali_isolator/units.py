@@ -24,22 +24,40 @@ from jabali_isolator.config import (
 logger = logging.getLogger(__name__)
 
 
-def generate_nspawn_unit(user: str) -> str:
-    """Return the content of a .nspawn unit file for the given user."""
+def generate_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") -> str:
+    """Return the content of a .nspawn unit file for the given user.
+
+    The container runs PHP-FPM with the user's pool config as its main process.
+    """
     ro_lines = "\n".join(f"BindReadOnly={p}" for p in HOST_RO_BINDS)
-    socket_bind = f"Bind={SOCKET_DIR}/{user}:/run/php"
-    home_bind = f"Bind=/home/{user}"
+
+    # Bind-mount the user's pool config read-only
+    if pool_conf:
+        pool_bind = f"BindReadOnly={pool_conf}"
+    else:
+        pool_bind = f"BindReadOnly=/etc/php/{php_version}/fpm/pool.d/{user}.conf"
+
+    # Bind the PHP config directory (read-only)
+    php_conf_bind = "BindReadOnly=/etc/php"
+
+    # Bind /run/php so the FPM socket lands where nginx expects it
+    socket_bind = f"Bind={SOCKET_DIR}"
+
+    fpm_bin = f"/usr/sbin/php-fpm{php_version}"
 
     return f"""\
 # Managed by jabali-isolator — do not edit manually
 [Exec]
 Boot=no
 ProcessTwo=yes
+Parameters={fpm_bin} --nodaemonize --fpm-config /etc/php/{php_version}/fpm/pool.d/{user}.conf
 
 [Files]
 {ro_lines}
-{home_bind}
+{php_conf_bind}
+Bind=/home/{user}
 {socket_bind}
+{pool_bind}
 TemporaryFileSystem=/tmp:mode=1777
 
 [Network]
@@ -65,11 +83,11 @@ def _dropin_dir(user: str) -> Path:
     return Path(SERVICE_DROPIN_BASE) / f"systemd-nspawn@{user}-php.service.d"
 
 
-def write_nspawn_unit(user: str) -> Path:
+def write_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") -> Path:
     """Write the .nspawn unit file.  Returns the file path."""
     path = _nspawn_path(user)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(generate_nspawn_unit(user))
+    path.write_text(generate_nspawn_unit(user, php_version=php_version, pool_conf=pool_conf))
     os.chmod(path, 0o644)
     logger.info("Wrote nspawn unit: %s", path)
     return path
