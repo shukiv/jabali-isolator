@@ -43,6 +43,7 @@ class TestGenerateNspawnUnit:
 
     def test_no_boot(self):
         content = generate_nspawn_unit("testuser")
+        assert "PrivateUsers=no" in content
         assert "Boot=no" in content
         assert "ProcessTwo=yes" in content
 

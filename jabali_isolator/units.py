@@ -57,6 +57,7 @@ def generate_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "
     return f"""\
 # Managed by jabali-isolator — do not edit manually
 [Exec]
+PrivateUsers=no
 Boot=no
 ProcessTwo=yes
 Parameters={fpm_bin} --nodaemonize --fpm-config /etc/php/{php_version}/fpm/pool.d/{user}.conf
