@@ -10,7 +10,7 @@ SOCKET_DIR = "/run/jabali-fpm"
 SERVICE_DROPIN_BASE = "/etc/systemd/system"
 LOCK_DIR = "/run/jabali-isolator"
 
-DEFAULT_MEMORY = "512M"
+DEFAULT_MEMORY = "1G"
 DEFAULT_CPU = "100%"
 
 # Directories to bind-mount read-only from the host into every container.

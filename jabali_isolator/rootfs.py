@@ -119,9 +119,12 @@ def _ensure_socket_dir(user: str, pw: pwd.struct_passwd) -> None:
     socket_dir = Path(SOCKET_DIR) / user
     socket_dir.mkdir(parents=True, exist_ok=True)
     try:
-        os.chown(socket_dir, pw.pw_uid, pw.pw_gid)
-    except PermissionError:
-        logger.debug("Cannot chown %s (not root) — skipping", socket_dir)
+        import grp as _grp
+        www_gid = _grp.getgrnam("www-data").gr_gid
+        os.chown(socket_dir, pw.pw_uid, www_gid)
+        os.chmod(socket_dir, 0o770)
+    except (PermissionError, KeyError):
+        logger.debug("Cannot set ownership on %s — skipping", socket_dir)
 
 
 def create_rootfs(user: str) -> Path:

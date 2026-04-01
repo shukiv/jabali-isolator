@@ -57,7 +57,7 @@ class TestGenerateNspawnUnit:
 class TestGenerateServiceDropin:
     def test_defaults(self):
         content = generate_service_dropin()
-        assert "MemoryMax=512M" in content
+        assert "MemoryMax=1G" in content
         assert "CPUQuota=100%" in content
 
     def test_custom_values(self):
