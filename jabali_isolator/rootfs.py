@@ -112,6 +112,18 @@ def _create_directories(root: Path, user: str) -> None:
     os.chmod(root / "tmp", 0o1777)  # noqa: S103
 
 
+def _ensure_socket_dir(user: str, pw: pwd.struct_passwd) -> None:
+    """Create and own the per-user socket directory for PHP-FPM."""
+    from jabali_isolator.config import SOCKET_DIR
+
+    socket_dir = Path(SOCKET_DIR) / user
+    socket_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chown(socket_dir, pw.pw_uid, pw.pw_gid)
+    except PermissionError:
+        logger.debug("Cannot chown %s (not root) — skipping", socket_dir)
+
+
 def create_rootfs(user: str) -> Path:
     """Build a minimal rootfs for the given user.
 
@@ -130,6 +142,7 @@ def create_rootfs(user: str) -> Path:
     _write_minimal_group(root, pw)
     _copy_resolv_conf(root)
     _create_directories(root, user)
+    _ensure_socket_dir(user, pw)
 
     return root
 

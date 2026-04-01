@@ -7,6 +7,7 @@ import contextlib
 import fcntl
 import glob as glob_mod
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -119,7 +120,7 @@ async def create(
         except KeyError as e:
             raise IsolatorError(f"User {user!r} does not exist on this system") from e
 
-        # Create per-user socket directory for PHP-FPM
+        # Create per-user socket directory for PHP-FPM (owned by user so FPM can write)
         socket_dir = Path(_cfg.SOCKET_DIR) / user
         socket_dir.mkdir(parents=True, exist_ok=True)
 
