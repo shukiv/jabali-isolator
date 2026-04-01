@@ -22,7 +22,7 @@ class TestGenerateNspawnUnit:
 
     def test_contains_socket_bind(self):
         content = generate_nspawn_unit("testuser")
-        assert "Bind=/run/php" in content
+        assert "Bind=/run/jabali-fpm/testuser:/run/php" in content
 
     def test_contains_fpm_command(self):
         content = generate_nspawn_unit("testuser", php_version="8.4")

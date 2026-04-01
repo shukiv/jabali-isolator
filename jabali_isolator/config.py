@@ -6,7 +6,7 @@ import re
 
 MACHINES_DIR = "/var/lib/machines"
 NSPAWN_DIR = "/etc/systemd/nspawn"
-SOCKET_DIR = "/run/php"
+SOCKET_DIR = "/run/jabali-fpm"
 SERVICE_DROPIN_BASE = "/etc/systemd/system"
 LOCK_DIR = "/run/jabali-isolator"
 

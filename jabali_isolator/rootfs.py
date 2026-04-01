@@ -44,7 +44,7 @@ def _write_minimal_passwd(root: Path, pw: pwd.struct_passwd) -> None:
 
 
 def _write_minimal_group(root: Path, pw: pwd.struct_passwd) -> None:
-    """Write /etc/group with root + the target user's primary group."""
+    """Write /etc/group with root, www-data, and the target user's primary group."""
     etc = root / "etc"
     etc.mkdir(parents=True, exist_ok=True)
 
@@ -56,8 +56,12 @@ def _write_minimal_group(root: Path, pw: pwd.struct_passwd) -> None:
 
     lines = [
         "root:x:0:",
-        f"{group_name}:x:{pw.pw_gid}:",
+        "www-data:x:33:",
     ]
+    # Avoid duplicate if user's primary group is www-data
+    if pw.pw_gid != 33:
+        lines.append(f"{group_name}:x:{pw.pw_gid}:")
+
     group_file = etc / "group"
     group_file.write_text("\n".join(lines) + "\n")
     os.chmod(group_file, 0o644)

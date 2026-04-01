@@ -1,0 +1,19 @@
+{
+  "id": "session-1774734025022",
+  "startedAt": "2026-03-28T21:40:25.022Z",
+  "cwd": "/home/shuki/projects/jabali-isolator",
+  "context": {
+    "lastMatchedPatterns": [
+      "mem-project_next_session----"
+    ]
+  },
+  "metrics": {
+    "edits": 5,
+    "commands": 0,
+    "tasks": 0,
+    "errors": 0
+  },
+  "updatedAt": "2026-03-28T21:40:26.773Z",
+  "endedAt": "2026-03-28T23:35:38.474Z",
+  "duration": 6913453
+}

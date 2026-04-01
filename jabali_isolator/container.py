@@ -119,6 +119,10 @@ async def create(
         except KeyError as e:
             raise IsolatorError(f"User {user!r} does not exist on this system") from e
 
+        # Create per-user socket directory for PHP-FPM
+        socket_dir = Path(_cfg.SOCKET_DIR) / user
+        socket_dir.mkdir(parents=True, exist_ok=True)
+
         # Write unit files — container will run PHP-FPM with this user's pool
         write_nspawn_unit(user, php_version=php_version, pool_conf=pool_conf)
         write_service_dropin(user, memory=memory, cpu=cpu)

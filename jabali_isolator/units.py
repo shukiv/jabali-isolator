@@ -49,8 +49,8 @@ def generate_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "
     # Bind the PHP config directory (read-only)
     php_conf_bind = "BindReadOnly=/etc/php"
 
-    # Bind /run/php so the FPM socket lands where nginx expects it
-    socket_bind = f"Bind={SOCKET_DIR}"
+    # Bind per-user socket dir to /run/php inside container (avoids host conflicts)
+    socket_bind = f"Bind={SOCKET_DIR}/{user}:/run/php"
 
     fpm_bin = f"/usr/sbin/php-fpm{php_version}"
 

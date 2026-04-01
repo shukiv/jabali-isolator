@@ -37,7 +37,7 @@ class TestCreateRootfs:
         assert lines[1].startswith("testuser:")
         assert ":1001:1001:" in lines[1]
 
-    def test_group_contains_root_and_user_group(self, isolator_dirs, fake_user):
+    def test_group_contains_root_wwwdata_and_user_group(self, isolator_dirs, fake_user):
         with (
             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
             patch("jabali_isolator.rootfs._lookup_group", side_effect=KeyError),
@@ -46,9 +46,10 @@ class TestCreateRootfs:
 
         group = (root / "etc" / "group").read_text()
         lines = group.strip().splitlines()
-        assert len(lines) == 2
+        assert len(lines) == 3
         assert lines[0].startswith("root:")
-        assert lines[1].startswith("testuser:")
+        assert lines[1] == "www-data:x:33:"
+        assert lines[2].startswith("testuser:")
 
     def test_idempotent_rebuild(self, isolator_dirs, fake_user):
         with patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user):
