@@ -88,6 +88,24 @@ def _copy_resolv_conf(root: Path) -> None:
         dest.write_text("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
 
 
+def _copy_os_release(root: Path) -> None:
+    """Copy host /etc/os-release so tools like VS Code detect Linux correctly."""
+    host_os_release = Path("/etc/os-release")
+    dest = root / "etc" / "os-release"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if host_os_release.is_symlink():
+        resolved = host_os_release.resolve()
+        if resolved.is_file():
+            shutil.copy2(str(resolved), str(dest))
+            return
+    elif host_os_release.is_file():
+        shutil.copy2(str(host_os_release), str(dest))
+        return
+
+    dest.write_text('ID=linux\nNAME="Linux"\n')
+
+
 def _create_directories(root: Path, user: str) -> None:
     """Create empty directories that serve as mount points or private dirs."""
     dirs = [
@@ -128,6 +146,7 @@ def create_rootfs(user: str) -> Path:
     _write_minimal_passwd(root, pw)
     _write_minimal_group(root, pw)
     _copy_resolv_conf(root)
+    _copy_os_release(root)
     _create_directories(root, user)
 
     return root
