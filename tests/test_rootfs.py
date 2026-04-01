@@ -19,7 +19,6 @@ class TestCreateRootfs:
         assert (root / "etc" / "group").is_file()
         assert (root / "etc" / "resolv.conf").is_file()
         assert (root / "tmp").is_dir()
-        assert (root / "run" / "php").is_dir()
         assert (root / "home" / "testuser").is_dir()
         assert (root / "usr").is_dir()
         assert (root / "lib").is_dir()

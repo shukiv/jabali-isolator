@@ -33,7 +33,7 @@ def _run(coro):
 
 @click.group()
 def cli() -> None:
-    """jabali-isolate — PHP-FPM container isolation via systemd-nspawn."""
+    """jabali-isolate — nspawn container isolation for shell access."""
 
 
 @cli.command()
@@ -52,8 +52,6 @@ def create(user: str, memory: str, cpu: str) -> None:
         result = _run(container.create(user, memory=memory, cpu=cpu))
         click.echo(f"Created container for {user}")
         click.echo(f"  Rootfs:  {result['rootfs']}")
-        click.echo(f"  PHP:     {result['php_version']}")
-        click.echo(f"  Pool:    {result['pool_conf']}")
         click.echo(f"  Memory:  {result['memory']}")
         click.echo(f"  CPU:     {result['cpu']}")
         click.echo(f"\nStart with: jabali-isolate start {user}")

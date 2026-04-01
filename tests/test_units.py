@@ -20,18 +20,14 @@ class TestGenerateNspawnUnit:
         assert "BindReadOnly=/etc/php" in content
         assert "Bind=/home/testuser" in content
 
-    def test_contains_socket_bind(self):
+    def test_uses_sleep_infinity(self):
         content = generate_nspawn_unit("testuser")
-        assert "Bind=/run/jabali-fpm/testuser:/run/php" in content
+        assert "Parameters=/bin/sleep infinity" in content
 
-    def test_contains_fpm_command(self):
-        content = generate_nspawn_unit("testuser", php_version="8.4")
-        assert "Parameters=/usr/sbin/php-fpm8.4 --nodaemonize" in content
-        assert "testuser.conf" in content
-
-    def test_custom_pool_conf(self):
-        content = generate_nspawn_unit("testuser", pool_conf="/etc/php/8.3/fpm/pool.d/testuser.conf")
-        assert "BindReadOnly=/etc/php/8.3/fpm/pool.d/testuser.conf" in content
+    def test_no_fpm_socket_bind(self):
+        content = generate_nspawn_unit("testuser")
+        assert "/run/jabali-fpm" not in content
+        assert "pool.d" not in content
 
     def test_tmpfs(self):
         content = generate_nspawn_unit("testuser")
@@ -41,7 +37,7 @@ class TestGenerateNspawnUnit:
         content = generate_nspawn_unit("testuser")
         assert "VirtualEthernet=no" in content
 
-    def test_no_boot(self):
+    def test_exec_section(self):
         content = generate_nspawn_unit("testuser")
         assert "PrivateUsers=no" in content
         assert "Boot=no" in content
@@ -58,7 +54,7 @@ class TestGenerateNspawnUnit:
 class TestGenerateServiceDropin:
     def test_defaults(self):
         content = generate_service_dropin()
-        assert "MemoryMax=1G" in content
+        assert "MemoryMax=256M" in content
         assert "CPUQuota=100%" in content
 
     def test_custom_values(self):

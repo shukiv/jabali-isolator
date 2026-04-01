@@ -51,25 +51,35 @@ class TestIsAvailable:
 
 class TestCreate:
     @pytest.mark.asyncio
-    async def test_creates_container(self, isolator_dirs, fake_pool, fake_user):
+    async def test_creates_container(self, isolator_dirs, fake_user):
         with (
             patch("jabali_isolator.container.is_available", return_value=True),
             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
-            patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")) as mock_run,
+            patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")),
         ):
             result = await create("testuser", memory="256M", cpu="50%")
 
         assert result["user"] == "testuser"
         assert result["memory"] == "256M"
         assert result["cpu"] == "50%"
-        assert result["php_version"] == "8.4"
-        enable_calls = [c for c in mock_run.call_args_list if "enable" in c[0][0]]
-        assert len(enable_calls) == 1
         assert (isolator_dirs["machines"] / "testuser-php" / "etc" / "passwd").is_file()
         assert (isolator_dirs["nspawn"] / "testuser-php.nspawn").is_file()
         nspawn_content = (isolator_dirs["nspawn"] / "testuser-php.nspawn").read_text()
-        assert "php-fpm8.4" in nspawn_content
-        assert "--nodaemonize" in nspawn_content
+        assert "sleep infinity" in nspawn_content
+        assert "php-fpm" not in nspawn_content
+
+    @pytest.mark.asyncio
+    async def test_no_systemctl_enable(self, isolator_dirs, fake_user):
+        """Containers should NOT auto-start on boot."""
+        with (
+            patch("jabali_isolator.container.is_available", return_value=True),
+            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
+            patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")) as mock_run,
+        ):
+            await create("testuser")
+
+        enable_calls = [c for c in mock_run.call_args_list if "enable" in c[0][0]]
+        assert len(enable_calls) == 0
 
     @pytest.mark.asyncio
     async def test_fails_without_nspawn(self):
@@ -78,7 +88,7 @@ class TestCreate:
                 await create("testuser")
 
     @pytest.mark.asyncio
-    async def test_fails_for_nonexistent_user(self, isolator_dirs, fake_pool):
+    async def test_fails_for_nonexistent_user(self, isolator_dirs):
         with (
             patch("jabali_isolator.container.is_available", return_value=True),
             patch("jabali_isolator.rootfs._lookup_user", side_effect=KeyError("nope")),
@@ -87,44 +97,16 @@ class TestCreate:
                 await create("testuser")
 
     @pytest.mark.asyncio
-    async def test_fails_without_pool_config(self, isolator_dirs, monkeypatch):
-        import jabali_isolator.config as cfg
-
-        monkeypatch.setattr(cfg, "FPM_POOL_PATHS", ["/nonexistent/*/pool.d/{user}.conf"])
-
-        with patch("jabali_isolator.container.is_available", return_value=True):
-            with pytest.raises(IsolatorError, match="No PHP-FPM pool config found"):
-                await create("testuser")
-
-    @pytest.mark.asyncio
-    async def test_rejects_invalid_memory(self, isolator_dirs, fake_pool):
+    async def test_rejects_invalid_memory(self, isolator_dirs):
         with patch("jabali_isolator.container.is_available", return_value=True):
             with pytest.raises(IsolatorError, match="Invalid memory"):
                 await create("testuser", memory="banana")
 
     @pytest.mark.asyncio
-    async def test_rejects_invalid_cpu(self, isolator_dirs, fake_pool):
+    async def test_rejects_invalid_cpu(self, isolator_dirs):
         with patch("jabali_isolator.container.is_available", return_value=True):
             with pytest.raises(IsolatorError, match="Invalid CPU"):
                 await create("testuser", cpu="fast")
-
-    @pytest.mark.asyncio
-    async def test_succeeds_when_enable_fails(self, isolator_dirs, fake_pool, fake_user):
-        with (
-            patch("jabali_isolator.container.is_available", return_value=True),
-            patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
-            patch(
-                "jabali_isolator.container._run",
-                new_callable=AsyncMock,
-                side_effect=[
-                    (0, "", ""),
-                    (1, "", "Failed to enable unit"),
-                ],
-            ),
-        ):
-            result = await create("testuser")
-
-        assert result["user"] == "testuser"
 
     @pytest.mark.asyncio
     async def test_rejects_invalid_username(self):
@@ -134,7 +116,7 @@ class TestCreate:
 
 class TestDestroy:
     @pytest.mark.asyncio
-    async def test_destroys_existing(self, isolator_dirs, fake_pool, fake_user):
+    async def test_destroys_existing(self, isolator_dirs, fake_user):
         with (
             patch("jabali_isolator.container.is_available", return_value=True),
             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),
@@ -146,13 +128,11 @@ class TestDestroy:
             removed = await destroy("testuser")
 
         assert removed is True
-        disable_calls = [c for c in mock_run.call_args_list if "disable" in c[0][0]]
-        assert len(disable_calls) == 1
         assert not (isolator_dirs["machines"] / "testuser-php").exists()
         assert not (isolator_dirs["nspawn"] / "testuser-php.nspawn").exists()
 
     @pytest.mark.asyncio
-    async def test_succeeds_when_disable_fails(self, isolator_dirs, fake_pool, fake_user):
+    async def test_succeeds_when_disable_fails(self, isolator_dirs, fake_user):
         with (
             patch("jabali_isolator.container.is_available", return_value=True),
             patch("jabali_isolator.rootfs._lookup_user", return_value=fake_user),

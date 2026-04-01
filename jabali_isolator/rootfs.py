@@ -92,7 +92,6 @@ def _create_directories(root: Path, user: str) -> None:
     """Create empty directories that serve as mount points or private dirs."""
     dirs = [
         root / "tmp",
-        root / "run" / "php",
         root / "home" / user,
         root / "usr",
         root / "lib",
@@ -110,21 +109,6 @@ def _create_directories(root: Path, user: str) -> None:
 
     # /tmp needs sticky bit
     os.chmod(root / "tmp", 0o1777)  # noqa: S103
-
-
-def _ensure_socket_dir(user: str, pw: pwd.struct_passwd) -> None:
-    """Create and own the per-user socket directory for PHP-FPM."""
-    from jabali_isolator.config import SOCKET_DIR
-
-    socket_dir = Path(SOCKET_DIR) / user
-    socket_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        import grp as _grp
-        www_gid = _grp.getgrnam("www-data").gr_gid
-        os.chown(socket_dir, pw.pw_uid, www_gid)
-        os.chmod(socket_dir, 0o770)
-    except (PermissionError, KeyError):
-        logger.debug("Cannot set ownership on %s — skipping", socket_dir)
 
 
 def create_rootfs(user: str) -> Path:
@@ -145,7 +129,6 @@ def create_rootfs(user: str) -> Path:
     _write_minimal_group(root, pw)
     _copy_resolv_conf(root)
     _create_directories(root, user)
-    _ensure_socket_dir(user, pw)
 
     return root
 

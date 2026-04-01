@@ -1,13 +1,11 @@
-"""NSpawnManager — create, start, stop, destroy nspawn containers for PHP-FPM isolation."""
+"""NSpawnManager — create, start, stop, destroy nspawn containers for shell isolation."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import fcntl
-import glob as glob_mod
 import logging
-import os
 import re
 import shutil
 from pathlib import Path
@@ -72,21 +70,6 @@ def is_available() -> bool:
     return shutil.which("systemd-nspawn") is not None
 
 
-def _find_pool_config(user: str) -> tuple[str, str]:
-    """Find the user's PHP-FPM pool config and PHP version.
-
-    Returns (pool_conf_path, php_version).  Raises IsolatorError if not found.
-    """
-    for pattern in _cfg.FPM_POOL_PATHS:
-        for conf in glob_mod.glob(pattern.format(user=user)):
-            # Extract PHP version from path (e.g., /etc/php/8.4/fpm/pool.d/user.conf)
-            match = re.search(r"/php/(\d+\.\d+)/", conf)
-            if not match:
-                raise IsolatorError(f"Cannot determine PHP version from pool config path: {conf}")
-            return conf, match.group(1)
-    raise IsolatorError(f"No PHP-FPM pool config found for {user!r}")
-
-
 async def create(
     user: str,
     memory: str = _cfg.DEFAULT_MEMORY,
@@ -94,8 +77,9 @@ async def create(
 ) -> dict:
     """Create a container for the given user.
 
-    Finds the user's PHP-FPM pool config, builds the rootfs, writes systemd
-    unit files.  Does NOT start the container — call start() after.
+    Builds the rootfs and writes systemd unit files.  The container runs
+    sleep infinity as its main process (for shell access via nsenter).
+    Does NOT start the container — call start() after.
 
     Returns a dict with creation details.
     """
@@ -111,21 +95,14 @@ async def create(
         raise IsolatorError("systemd-nspawn is not installed")
 
     with _user_lock(user):
-        # Find pool config and PHP version
-        pool_conf, php_version = _find_pool_config(user)
-
         # Build rootfs (raises KeyError if user doesn't exist)
         try:
             rootfs_path = create_rootfs(user)
         except KeyError as e:
             raise IsolatorError(f"User {user!r} does not exist on this system") from e
 
-        # Create per-user socket directory for PHP-FPM (owned by user so FPM can write)
-        socket_dir = Path(_cfg.SOCKET_DIR) / user
-        socket_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write unit files — container will run PHP-FPM with this user's pool
-        write_nspawn_unit(user, php_version=php_version, pool_conf=pool_conf)
+        # Write unit files
+        write_nspawn_unit(user)
         write_service_dropin(user, memory=memory, cpu=cpu)
 
         # Reload systemd to pick up new units
@@ -133,17 +110,10 @@ async def create(
         if rc != 0:
             logger.warning("systemctl daemon-reload failed: %s", err)
 
-        # Enable auto-start on boot
-        rc, _, err = await _run(["systemctl", "enable", service_name(user)])
-        if rc != 0:
-            logger.warning("systemctl enable failed: %s", err)
-
-    logger.info("Created container for %s (PHP %s, pool: %s)", user, php_version, pool_conf)
+    logger.info("Created container for %s", user)
     return {
         "user": user,
         "rootfs": str(rootfs_path),
-        "php_version": php_version,
-        "pool_conf": pool_conf,
         "memory": memory,
         "cpu": cpu,
     }
@@ -162,7 +132,7 @@ async def destroy(user: str) -> bool:
         # Stop unconditionally — stop() tolerates not-running
         await _stop_unlocked(user)
 
-        # Disable auto-start
+        # Disable auto-start (may exist from older installs)
         rc, _, err = await _run(["systemctl", "disable", service_name(user)])
         if rc != 0:
             logger.warning("systemctl disable failed: %s", err)

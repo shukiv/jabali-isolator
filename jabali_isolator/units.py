@@ -12,13 +12,13 @@ import os
 import shutil
 from pathlib import Path
 
-from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY, HOST_RO_BINDS, SOCKET_DIR
+from jabali_isolator.config import DEFAULT_CPU, DEFAULT_MEMORY, HOST_RO_BINDS
 from jabali_isolator.machine import dropin_dir, nspawn_path
 
 logger = logging.getLogger(__name__)
 
 
-def _validate_nspawn_inputs(user: str, php_version: str, pool_conf: str) -> None:
+def _validate_nspawn_inputs(user: str) -> None:
     """Validate inputs before interpolating into systemd unit files."""
     import re
 
@@ -26,33 +26,17 @@ def _validate_nspawn_inputs(user: str, php_version: str, pool_conf: str) -> None
 
     if not re.match(USERNAME_RE, user):
         raise ValueError(f"Invalid username for unit file: {user!r}")
-    if not re.match(r"^\d+\.\d+$", php_version):
-        raise ValueError(f"Invalid PHP version: {php_version!r}")
-    if pool_conf and ("\n" in pool_conf or "\r" in pool_conf or not pool_conf.startswith("/")):
-        raise ValueError(f"Invalid pool config path: {pool_conf!r}")
 
 
-def generate_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") -> str:
+def generate_nspawn_unit(user: str) -> str:
     """Return the content of a .nspawn unit file for the given user.
 
-    The container runs PHP-FPM with the user's pool config as its main process.
+    The container runs sleep infinity as its main process, providing
+    namespaces for SSH shell access via nsenter.  Web serving uses
+    host PHP-FPM pools directly (no FPM inside the container).
     """
-    _validate_nspawn_inputs(user, php_version, pool_conf)
+    _validate_nspawn_inputs(user)
     ro_lines = "\n".join(f"BindReadOnly={p}" for p in HOST_RO_BINDS)
-
-    # Bind-mount the user's pool config read-only
-    if pool_conf:
-        pool_bind = f"BindReadOnly={pool_conf}"
-    else:
-        pool_bind = f"BindReadOnly=/etc/php/{php_version}/fpm/pool.d/{user}.conf"
-
-    # Bind the PHP config directory (read-only)
-    php_conf_bind = "BindReadOnly=/etc/php"
-
-    # Bind per-user socket dir to /run/php inside container (avoids host conflicts)
-    socket_bind = f"Bind={SOCKET_DIR}/{user}:/run/php"
-
-    fpm_bin = f"/usr/sbin/php-fpm{php_version}"
 
     return f"""\
 # Managed by jabali-isolator — do not edit manually
@@ -60,14 +44,12 @@ def generate_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "
 PrivateUsers=no
 Boot=no
 ProcessTwo=yes
-Parameters={fpm_bin} --nodaemonize --fpm-config /etc/php/{php_version}/fpm/pool.d/{user}.conf
+Parameters=/bin/sleep infinity
 
 [Files]
 {ro_lines}
-{php_conf_bind}
+BindReadOnly=/etc/php
 Bind=/home/{user}
-{socket_bind}
-{pool_bind}
 TemporaryFileSystem=/tmp:mode=1777
 
 [Network]
@@ -85,11 +67,11 @@ CPUQuota={cpu}
 """
 
 
-def write_nspawn_unit(user: str, php_version: str = "8.4", pool_conf: str = "") -> Path:
+def write_nspawn_unit(user: str) -> Path:
     """Write the .nspawn unit file.  Returns the file path."""
     path = nspawn_path(user)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(generate_nspawn_unit(user, php_version=php_version, pool_conf=pool_conf))
+    path.write_text(generate_nspawn_unit(user))
     os.chmod(path, 0o644)
     logger.info("Wrote nspawn unit: %s", path)
     return path
