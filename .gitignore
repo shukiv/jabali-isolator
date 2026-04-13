@@ -9,3 +9,6 @@ build/
 .env.*
 *.pem
 *.key
+
+# Claude Flow coordinator state (regenerates per-session, never commit)
+.claude-flow/
