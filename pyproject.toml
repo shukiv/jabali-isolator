@@ -1,7 +1,7 @@
 [project]
 name = "jabali-isolator"
 version = "0.1.0"
-description = "PHP-FPM container isolation via systemd-nspawn"
+description = "Lightweight nspawn container isolation for SSH shell access"
 requires-python = ">=3.12"
 dependencies = ["click>=8.0,<9"]
 

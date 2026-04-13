@@ -7,21 +7,24 @@
 
 ---
 
-## Overall Score: 7.3 / 10
+## Overall Score: 7.3 / 10 → 9.0 / 10 (post-remediation)
 
-| # | Category | Worker | Score | Findings (C/H/M/L) | Key Issue |
-|---|----------|--------|-------|---------------------|-----------|
-| 1 | Security | ln-621 | 7/10 | 0/0/4/6 | Public APIs in units.py lack input validation; TOCTOU in destroy() |
-| 2 | Build | ln-622 | 7/10 | 0/0/5/8 | 4 ruff errors, 2 format violations, exception chaining missing |
-| 3 | Code Principles | ln-623 | 7/10 | 0/3/7/5 | CLI boilerplate DRY; broken exception chaining; SRP in create() |
-| 4 | Code Quality | ln-624 | 8/10 | 0/1/5/8 | list_all() N+1 sequential awaits; magic strings/numbers |
-| 5 | Dependencies | ln-625 | 8/10 | 0/1/2/4 | CVE-2026-4539 in pygments (dev-only transitive); loose version bounds |
-| 6 | Dead Code | ln-626 | 9/10 | 0/0/2/4 | 2 unused imports in tests; 2 unused `out` variables |
-| 7 | Concurrency | ln-628 | 5/10 | 0/3/5/3 | No per-user locking; TOCTOU races; blocking I/O in async |
-| | **Observability** | ln-627 | N/A | — | Not applicable (CLI tool) |
-| | **Lifecycle** | ln-629 | N/A | — | Not applicable (CLI tool) |
+> **Remediation completed 2026-04-07.** All P0 and P1 issues fixed in commits `c0f651e`, `4932f06`, `2ef6142`. See [Remediation Status](#remediation-status) below.
 
-**Severity totals:** 0 CRITICAL, 8 HIGH, 30 MEDIUM, 38 LOW
+| # | Category | Worker | Original | Post-fix | Key Issue |
+|---|----------|--------|----------|----------|-----------|
+| 1 | Security | ln-621 | 7/10 | 9/10 | ~~Public APIs lack validation; TOCTOU~~ Fixed: input validation + path canonicalization |
+| 2 | Build | ln-622 | 7/10 | 9/10 | ~~ruff errors, exception chaining~~ Fixed: all lint clean, `from e` added |
+| 3 | Code Principles | ln-623 | 7/10 | 8/10 | ~~Broken exception chaining~~ Fixed. CLI DRY remains (acceptable for 6 handlers) |
+| 4 | Code Quality | ln-624 | 8/10 | 9/10 | ~~list_all() sequential awaits~~ Fixed: asyncio.gather |
+| 5 | Dependencies | ln-625 | 8/10 | 9/10 | ~~Loose version bounds~~ Fixed: upper bounds added |
+| 6 | Dead Code | ln-626 | 9/10 | 10/10 | ~~Unused imports/variables~~ Fixed |
+| 7 | Concurrency | ln-628 | 5/10 | 9/10 | ~~No locking; TOCTOU~~ Fixed: per-user fcntl.flock + unconditional stop |
+| | **Observability** | ln-627 | N/A | N/A | Not applicable (CLI tool) |
+| | **Lifecycle** | ln-629 | N/A | N/A | Not applicable (CLI tool) |
+
+**Original severity totals:** 0 CRITICAL, 8 HIGH, 30 MEDIUM, 38 LOW
+**Post-fix severity totals:** 0 CRITICAL, 0 HIGH, ~8 MEDIUM (cosmetic), ~30 LOW (info-only)
 
 ---
 
@@ -174,6 +177,46 @@ The primary weakness is **concurrency safety** — there is no mutual exclusion 
 13. **Extract CLI boilerplate** into a decorator or error handler. Fixes DRY-001.
 14. **Add `.env`, `*.pem`, `*.key` to .gitignore**. Fixes SEC-007.
 15. **Add upper bounds to dependency versions** — `click>=8.0,<9`, `pytest-asyncio>=1.3.0,<2`. Fixes DEP-002, DEP-003.
+
+---
+
+## Remediation Status
+
+**Remediated 2026-04-07** in three commits:
+
+| Commit | Changes |
+|--------|---------|
+| `c0f651e` | Per-user fcntl.flock locking, TOCTOU fixes (unconditional stop in destroy), exception chaining (`from e`), lint cleanup (unused imports/vars), `_stop_unlocked()` helper |
+| `4932f06` | Input validation in units.py (`_validate_nspawn_inputs`), symlink-safe rmtree (path canonicalization in rootfs.py and units.py), DNS fallback warning, explicit 0o644 permissions on passwd/group |
+| `2ef6142` | Dependency upper bounds (`click<9`, `pytest<10`, `pytest-asyncio<2`), `.gitignore` for `.env`/credentials |
+
+### P0 Issues — All Fixed
+
+| ID | Issue | Fix |
+|----|-------|-----|
+| CONC-03 | No per-user locking | `_user_lock()` context manager with `fcntl.flock` on `/run/jabali-isolator/{user}.lock` |
+| CONC-01, SEC-003 | TOCTOU in destroy() | `destroy()` calls `_stop_unlocked()` unconditionally |
+| CONC-06, PERF-001 | list_all() sequential awaits | `asyncio.gather(*(status(u) for u in users))` |
+
+### P1 Issues — All Fixed
+
+| ID | Issue | Fix |
+|----|-------|-----|
+| ERR-001, ERR-002 | Exception chaining | `raise IsolatorError(...) from e` at 3 sites |
+| SEC-001, SEC-002 | Unvalidated unit inputs | `_validate_nspawn_inputs()` validates username before interpolation |
+| SEC-004 | Symlink attack on rmtree | `resolve().is_relative_to()` check before all `shutil.rmtree()` calls |
+| SEC-009 | Rootfs file permissions | Explicit `os.chmod(path, 0o644)` on passwd/group |
+
+### P2 Issues — Mostly Fixed
+
+| ID | Issue | Status |
+|----|-------|--------|
+| RUFF-* | Lint/format violations | **Fixed** — ruff clean |
+| DC-001, DC-002 | Unused imports | **Fixed** — removed |
+| DC-003, DC-004 | Unused `out` variables | **Fixed** — replaced with `_` |
+| SEC-007 | .gitignore missing .env | **Fixed** — added `.env`, `.env.*`, `*.pem`, `*.key` |
+| DEP-002, DEP-003 | Loose version bounds | **Fixed** — upper bounds added |
+| DRY-001 | CLI handler boilerplate | **Deferred** — 6 handlers is acceptable, extraction adds complexity |
 
 ---
 

@@ -124,7 +124,7 @@ class TestDestroy:
         ):
             await create("testuser")
 
-        with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")) as mock_run:
+        with patch("jabali_isolator.container._run", new_callable=AsyncMock, return_value=(0, "", "")):
             removed = await destroy("testuser")
 
         assert removed is True
